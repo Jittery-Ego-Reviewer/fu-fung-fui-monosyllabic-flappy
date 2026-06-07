@@ -12,6 +12,7 @@
         }
         #game-wrapper {
             touch-action: none; /* Prevent pull-to-refresh only on the game container */
+            transition: background-color 0.5s ease; /* Smooth transition for background */
         }
         @keyframes popIn {
             0% { transform: scale(0.8) translateY(20px); opacity: 0; }
@@ -33,7 +34,7 @@
 <body class="bg-slate-900 m-0 flex items-center justify-center min-h-screen w-full text-slate-800 font-sans p-4">
 
     <!-- Game Container (Maintains 2:3 Aspect Ratio) -->
-    <div id="game-wrapper" class="relative w-full max-w-[450px] aspect-[2/3] max-h-full bg-blue-400 overflow-hidden rounded-3xl shadow-2xl border-4 border-slate-700">
+    <div id="game-wrapper" style="background-color: #60a5fa;" class="relative w-full max-w-[450px] aspect-[2/3] max-h-full overflow-hidden rounded-3xl shadow-2xl border-4 border-slate-700">
         
         <!-- The Game Canvas -->
         <canvas id="gameCanvas" class="block w-full h-full"></canvas>
@@ -83,8 +84,34 @@
                         <span id="bestScore" class="text-4xl font-black text-orange-500">0</span>
                     </div>
                 </div>
-                <button id="restartBtn" class="w-full mt-2 px-8 py-4 bg-blue-500 hover:bg-blue-400 active:bg-blue-600 text-white font-bold rounded-2xl text-xl shadow-[0_6px_0_#1e3a8a] active:shadow-[0_0px_0_#1e3a8a] active:translate-y-[6px] transition-all">
-                    再玩一次
+                <div class="flex flex-col gap-3 w-full mt-2">
+                    <button id="reviveBtn" class="w-full px-8 py-4 bg-purple-500 hover:bg-purple-400 active:bg-purple-600 text-white font-bold rounded-2xl text-xl shadow-[0_6px_0_#581c87] active:shadow-[0_0px_0_#581c87] active:translate-y-[6px] transition-all flex items-center justify-center gap-2">
+                        <span>🎤</span> 讀字復活
+                    </button>
+                    <button id="restartBtn" class="w-full px-8 py-4 bg-blue-500 hover:bg-blue-400 active:bg-blue-600 text-white font-bold rounded-2xl text-xl shadow-[0_6px_0_#1e3a8a] active:shadow-[0_0px_0_#1e3a8a] active:translate-y-[6px] transition-all">
+                        再玩一次
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- UI Overlay: Revive Screen -->
+        <div id="reviveScreen" class="absolute inset-0 flex flex-col items-center justify-center bg-purple-900/85 backdrop-blur-sm z-30 p-6 hidden">
+            <div class="bg-white px-8 py-10 rounded-[3rem] shadow-2xl flex flex-col items-center text-center animate-pop w-full max-w-[320px] border-8 border-purple-300">
+                <span class="text-purple-600 font-bold mb-4 text-base bg-purple-100 px-4 py-1 rounded-full">讀出這3個字復活！</span>
+                
+                <div id="reviveWords" class="text-4xl mb-6 mt-2 font-black text-slate-800 leading-relaxed flex flex-col gap-3 text-left w-full pl-6">
+                    <!-- Words go here -->
+                </div>
+                
+                <div class="flex items-center justify-center gap-3 bg-slate-100 rounded-2xl p-4 w-full mb-6 border-2 border-slate-200 shadow-inner">
+                    <div class="animate-pulse text-3xl drop-shadow-md">🎤</div>
+                    <span class="text-slate-500 font-bold text-lg animate-pulse tracking-widest">聆聽中...</span>
+                </div>
+                
+                <button id="holdReviveBtn" class="relative overflow-hidden w-full px-8 py-4 bg-green-500 text-white font-bold rounded-2xl text-2xl shadow-[0_6px_0_#166534] transition-all select-none touch-none">
+                    <div id="holdProgress" class="absolute left-0 top-0 bottom-0 bg-green-400 w-0 pointer-events-none"></div>
+                    <span class="relative z-10 pointer-events-none">長按 2 秒繼續</span>
                 </button>
             </div>
         </div>
@@ -120,6 +147,23 @@
             '鋒🔪', '蜂🐝', '縫🧵', '鳳🐦‍🔥', '峰🏔️', '灰🩶', '悔😞', '喙🦜'
         ];
 
+        // --- Color Block Palette ---
+        const colorPalette = [
+            { emoji: '🟥', bg: '#fce7f3', pipe: '#dc2626', border: '#7f1d1d' }, // Baby pink bg, deep red pipe
+            { emoji: '🟧', bg: '#ffedd5', pipe: '#ea580c', border: '#9a3412' }, // Pastel orange bg, deep orange pipe
+            { emoji: '🟨', bg: '#fef9c3', pipe: '#ca8a04', border: '#713f12' }, // Pastel yellow bg, deep yellow pipe
+            { emoji: '🟩', bg: '#dcfce7', pipe: '#16a34a', border: '#14532d' }, // Pastel green bg, deep green pipe
+            { emoji: '🟦', bg: '#dbeafe', pipe: '#2563eb', border: '#1e3a8a' }, // Pastel blue bg, deep blue pipe
+            { emoji: '🟪', bg: '#f3e8ff', pipe: '#9333ea', border: '#581c87' }, // Pastel purple bg, deep purple pipe
+            { emoji: '⬛️', bg: '#e2e8f0', pipe: '#334155', border: '#0f172a' }, // Light gray bg, dark slate pipe
+            { emoji: '⬜️', bg: '#f8fafc', pipe: '#cbd5e1', border: '#475569' }, // Very light slate bg, light slate pipe
+            { emoji: '🟫', bg: '#f5e6d3', pipe: '#8b4513', border: '#5c3317' }  // Pastel brown bg, deep brown pipe
+        ];
+
+        const defaultColors = { bg: '#60a5fa', pipe: '#22c55e', border: '#166534' }; // Default sky blue and standard green
+        let gameColors = { ...defaultColors };
+        let colorResetFrame = -1;
+
         // --- Game Variables ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -132,12 +176,12 @@
         let practiceTriggeredForCurrentScore = false;
         let lastInputTime = 0; // Prevent rapid-fire double inputs
         let currentAvatar = '🐯'; // Default avatar
+        let nextPracticeScore = 3; // Dynamically set between 3 and 6
         
         // Physics and Objects
         const C_WIDTH = 400; // Logical width
         const C_HEIGHT = 600; // Logical height
         
-        // Renamed 'tiger' to 'player' to reflect avatar choice
         const player = {
             x: 80,
             y: 300,
@@ -196,10 +240,22 @@
             setTimeout(() => playTone(300, 'sine', 0.1, 0.05), 30);
         }
 
+        function playPowerupSound() {
+            playTone(600, 'sine', 0.1, 0.1);
+            setTimeout(() => playTone(800, 'sine', 0.1, 0.1), 100);
+            setTimeout(() => playTone(1200, 'sine', 0.2, 0.15), 200);
+        }
+
         // --- Core Functions ---
         function resizeCanvas() {
             canvas.width = C_WIDTH;
             canvas.height = C_HEIGHT;
+        }
+
+        function resetColors() {
+            gameColors = { ...defaultColors };
+            if (wrapper) wrapper.style.backgroundColor = gameColors.bg;
+            colorResetFrame = -1;
         }
 
         function initGame() {
@@ -210,6 +266,11 @@
             score = 0;
             frames = 0;
             practiceTriggeredForCurrentScore = false;
+            nextPracticeScore = Math.floor(Math.random() * 4) + 3; // Random target between 3 to 6
+            
+            // Reset Colors
+            resetColors();
+
             updateScoreUI();
             initBubbles();
         }
@@ -228,6 +289,11 @@
 
         function getRandomWord() {
             return practiceWords[Math.floor(Math.random() * practiceWords.length)];
+        }
+
+        function getThreeRandomWords() {
+            let shuffled = [...practiceWords].sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, 3);
         }
 
         function doJump() {
@@ -303,6 +369,46 @@
             document.getElementById('practiceScreen').classList.add('hidden');
             startCountdown();
         });
+        bindButton('reviveBtn', showReviveScreen);
+
+        // Bind Hold-to-Revive logic
+        const holdBtn = document.getElementById('holdReviveBtn');
+        const holdProgress = document.getElementById('holdProgress');
+        let holdTimer;
+        let isHolding = false;
+
+        function startHold(e) {
+            if (e.cancelable) e.preventDefault();
+            if (isHolding) return;
+            isHolding = true;
+            
+            // Start visual progress
+            holdProgress.style.transition = 'width 2s linear';
+            holdProgress.style.width = '100%';
+            
+            initAudio(); // Assure audio works
+            
+            holdTimer = setTimeout(() => {
+                reviveGame();
+            }, 2000);
+        }
+
+        function endHold(e) {
+            if (e && e.cancelable) e.preventDefault();
+            isHolding = false;
+            clearTimeout(holdTimer);
+            
+            // Reset visual progress
+            holdProgress.style.transition = 'none';
+            holdProgress.style.width = '0%';
+        }
+
+        holdBtn.addEventListener('mousedown', startHold);
+        holdBtn.addEventListener('touchstart', startHold, { passive: false });
+        holdBtn.addEventListener('mouseup', endHold);
+        holdBtn.addEventListener('mouseleave', endHold);
+        holdBtn.addEventListener('touchend', endHold);
+        holdBtn.addEventListener('touchcancel', endHold);
 
         // Bind Avatar Selection
         const avatarBtns = document.querySelectorAll('.avatar-btn');
@@ -361,8 +467,6 @@
                 count--;
                 if (count > 0) {
                     cdText.innerText = count;
-                } else if (count === 0) {
-                    cdText.innerText = "GO!";
                 } else {
                     clearInterval(interval);
                     cdScreen.classList.add('hidden');
@@ -381,6 +485,37 @@
             
             document.getElementById('scoreUI').classList.add('hidden');
             document.getElementById('gameOverScreen').classList.remove('hidden');
+            document.getElementById('reviveBtn').classList.remove('hidden');
+        }
+
+        function showReviveScreen() {
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            
+            const words = getThreeRandomWords();
+            document.getElementById('reviveWords').innerHTML = words.join('<br>');
+            document.getElementById('reviveScreen').classList.remove('hidden');
+            
+            // Reset hold button state just in case
+            endHold();
+        }
+
+        function reviveGame() {
+            endHold();
+            document.getElementById('reviveScreen').classList.add('hidden');
+            
+            // Reset player slightly to avoid immediate death
+            player.y = C_HEIGHT / 2;
+            player.velocity = 0;
+            player.rotation = 0;
+            
+            // Clear pipes so player has a clean start
+            pipes.items = [];
+            
+            // Keep the score, practice trigger, and colours intact
+            document.getElementById('scoreUI').classList.remove('hidden');
+            
+            // Resume with countdown
+            startCountdown();
         }
 
         function updateScoreUI() {
@@ -389,11 +524,12 @@
 
         // --- Main Loop Functions ---
         function drawBackground() {
-            ctx.fillStyle = '#60a5fa'; // Blue-400
+            // Apply current dynamic background color
+            ctx.fillStyle = gameColors.bg;
             ctx.fillRect(0, 0, C_WIDTH, C_HEIGHT);
 
             // Bubbles
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
             bubbles.forEach(b => {
                 ctx.beginPath();
                 ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
@@ -427,7 +563,6 @@
             ctx.rotate(player.rotation);
             
             // FLIP horizontally to face right side of the screen.
-            // Emojis like 🐅 and 🦎 default to facing left, so scaling by -1 flips them to face right (towards the pipes).
             ctx.scale(-1, 1);
             
             ctx.font = `${player.width}px Arial`;
@@ -441,8 +576,9 @@
 
         function drawPipes() {
             pipes.items.forEach(p => {
-                ctx.fillStyle = '#22c55e'; // Green-500
-                ctx.strokeStyle = '#166534'; // Green-800
+                // Apply dynamic pipe colors
+                ctx.fillStyle = gameColors.pipe;
+                ctx.strokeStyle = gameColors.border;
                 ctx.lineWidth = 4;
 
                 // Top Pipe
@@ -458,6 +594,18 @@
                 // Bottom Pipe Cap
                 ctx.fillRect(p.x - 4, C_HEIGHT - p.bottom, pipes.width + 8, 20);
                 ctx.strokeRect(p.x - 4, C_HEIGHT - p.bottom, pipes.width + 8, 20);
+                
+                // Draw Colour Block if it exists and hasn't been collected
+                if (p.block && !p.block.collected) {
+                    ctx.save();
+                    ctx.font = '30px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    // Add a gentle float animation to the block based on frames
+                    const floatY = Math.sin(frames * 0.05) * 10;
+                    ctx.fillText(p.block.emoji, p.x + pipes.width / 2, p.block.y + floatY);
+                    ctx.restore();
+                }
             });
         }
 
@@ -479,20 +627,33 @@
                 const maxPipeH = C_HEIGHT - pipes.gap - minPipeH;
                 const topH = Math.floor(Math.random() * (maxPipeH - minPipeH + 1) + minPipeH);
                 
+                // 20% chance to spawn a colour block
+                let block = null;
+                if (Math.random() < 0.20) {
+                    const randomColor = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+                    block = {
+                        emoji: randomColor.emoji,
+                        colorData: randomColor,
+                        y: topH + pipes.gap / 2, // Centered vertically in the gap
+                        collected: false
+                    };
+                }
+
                 pipes.items.push({
                     x: C_WIDTH,
                     top: topH,
                     bottom: C_HEIGHT - topH - pipes.gap,
-                    passed: false
+                    passed: false,
+                    block: block
                 });
             }
 
-            // Pipe Logic
+            // Pipe & Block Logic
             for (let i = pipes.items.length - 1; i >= 0; i--) {
                 let p = pipes.items[i];
                 p.x -= pipes.dx;
 
-                // Hitbox Collision
+                // Hitbox Collision for Pipes
                 const hitboxPadding = 8; 
                 if (
                     player.x + hitboxPadding < p.x + pipes.width &&
@@ -500,6 +661,33 @@
                     (player.y + hitboxPadding < p.top || player.y + player.height - hitboxPadding > C_HEIGHT - p.bottom)
                 ) {
                     gameOver();
+                }
+                
+                // Collision Detection for Colour Block
+                if (p.block && !p.block.collected) {
+                    const blockX = p.x + pipes.width / 2;
+                    const blockY = p.block.y;
+                    const blockSize = 30; // Approximation of the emoji hitbox
+                    
+                    if (player.x < blockX + blockSize/2 &&
+                        player.x + player.width > blockX - blockSize/2 &&
+                        player.y < blockY + blockSize/2 &&
+                        player.y + player.height > blockY - blockSize/2) {
+                        
+                        // Collect Block
+                        p.block.collected = true;
+                        
+                        // Change game colours
+                        gameColors.bg = p.block.colorData.bg;
+                        gameColors.pipe = p.block.colorData.pipe;
+                        gameColors.border = p.block.colorData.border;
+                        wrapper.style.backgroundColor = gameColors.bg; // Keep wrapper matching canvas
+                        
+                        // Set frame to revert colors after 5 seconds (~60 FPS * 5)
+                        colorResetFrame = frames + 300;
+
+                        playPowerupSound();
+                    }
                 }
 
                 // Scoring
@@ -511,14 +699,21 @@
                     practiceTriggeredForCurrentScore = false; 
                 }
 
+                // Remove off-screen pipes
                 if (p.x + pipes.width < 0) {
                     pipes.items.splice(i, 1);
                 }
             }
 
-            // Practice Trigger every 3 points
-            if (score > 0 && score % 3 === 0 && !practiceTriggeredForCurrentScore) {
+            // Practice Trigger randomly every 3-6 points
+            if (score > 0 && score === nextPracticeScore && !practiceTriggeredForCurrentScore) {
                 triggerPractice();
+                nextPracticeScore = score + Math.floor(Math.random() * 4) + 3; // Set the next target
+            }
+
+            // Revert back to default colours after 5 seconds
+            if (colorResetFrame > 0 && frames >= colorResetFrame) {
+                resetColors();
             }
 
             frames++;
