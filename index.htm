@@ -550,8 +550,9 @@
 
         function drawPlayer() {
             ctx.save();
-            // Translate context to center of player
-            ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            // Translate context to center of player. 
+            // Math.round is used to fix sub-pixel rendering jitter (vibration) common on mobile screens.
+            ctx.translate(Math.round(player.x + player.width / 2), Math.round(player.y + player.height / 2));
             
             // Calculate and smooth rotation based on vertical velocity
             let targetRotation = Math.min(Math.PI / 4, Math.max(-Math.PI / 4, (player.velocity * 0.1)));
